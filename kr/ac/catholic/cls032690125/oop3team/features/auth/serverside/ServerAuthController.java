@@ -19,7 +19,7 @@ import java.util.concurrent.TimeUnit;
 public class ServerAuthController extends ServerRequestListener {
     private final AuthDAO authDAO;
     private Map<String, Session> sessionMap = new HashMap<>();
-    private final int SESSION_TIMEOUT_MINUTES = 60; // 1시간
+    private final int SESSION_TIMEOUT_MINUTES = 2; // 1시간
 
     private String hashPassword(String password) {
         return Integer.toString(password.hashCode());
