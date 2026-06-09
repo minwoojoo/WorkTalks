@@ -44,13 +44,13 @@ public final class CChatroomIndividualController extends StandardClientControl {
 
     public void sendMessage(String message, ClientInteractResponse<ServerResponsePacketSimplefied<Boolean>> callback) {
         chatcon.sendMessage(
-                new MessageBuilder()
-                        .setChatroomId(chatroom.getChatroomId())
-                        .setCurrentTime()
-                        .setSenderId(client.getCurrentSession().getUserId())
-                        .setContent(message)
-                        .build(),
-                callback
+            new MessageBuilder()
+                .setChatroomId(chatroom.getChatroomId())
+                .setCurrentTime()
+                .setSenderId(client.getCurrentSession().getUserId())
+                .setContent(message)
+                .build(),
+            callback
         );
     }
 

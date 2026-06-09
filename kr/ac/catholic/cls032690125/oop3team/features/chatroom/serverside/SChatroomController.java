@@ -15,6 +15,7 @@ import kr.ac.catholic.cls032690125.oop3team.models.Message;
 
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -135,14 +136,14 @@ public class SChatroomController extends ServerRequestListener {
 
                     // 1. userId → 이름 변환
                     String name = settingDAO.getUserName(s);
-                    // 2. 시스템 메시지 생성 및 저장
+                    // 2. 시스템 메시지 생성 및 저장 (Builder 패턴 사용 전의 전통적인 방식)
                     Message systemMsg = new MessageBuilder()
-                        .setChatroomId(packet.getChatroomId())
-                        .setSenderId("system")
-                        .setContent(name + "님이 들어왔습니다")
-                        .setSystem(true)
-                        .setCurrentTime()
-                        .build();
+                            .setChatroomId(packet.getChatroomId())
+                            .setSenderId("system")
+                            .setContent(name + "님이 들어왔습니다")
+                            .setSystem(true)
+                            .setCurrentTime()
+                            .build();
                     chatDAO.insertMessage(systemMsg);
 
                     // (기존 broadcastMessage 등은 필요에 따라 유지)
@@ -199,14 +200,15 @@ public class SChatroomController extends ServerRequestListener {
             if (result) {
                 // 1. userId → 이름 변환
                 String name = settingDAO.getUserName(packet.getUserId());
-                // 2. 시스템 메시지 생성 및 저장
-                Message systemMsg = new MessageBuilder()
-                    .setChatroomId(packet.getChatroomId())
-                    .setSenderId("system")
-                    .setContent(name + "님이 나갔습니다")
-                    .setSystem(true)
-                    .setCurrentTime()
-                    .build();
+                // 2. 시스템 메시지 생성 및 저장 (Builder 패턴 사용 전의 전통적인 방식)
+                Message systemMsg = new Message(
+                    -1, // messageId는 DB에서 자동 생성
+                    packet.getChatroomId(),
+                    "system",
+                    name + "님이 나갔습니다",
+                    true, // isSystem
+                    java.time.LocalDateTime.now()
+                );
                 chatDAO.insertMessage(systemMsg);
 
                 sch.send(new SChatroomLeavePacket(true, "채팅방을 성공적으로 나갔습니다."));
