@@ -50,6 +50,157 @@
 - **실시간 채팅 통신 구조**: Java Socket 기반 실시간 채팅 시스템을 설계 및 구현하고, 멀티스레드와 `BlockingQueue`를 활용해 동시 접속 환경에서도 안정적으로 메시지를 처리할 수 있도록 구성했습니다.
 - **화면 갱신 문제 개선**: 채팅방 초대 후 화면이 갱신되지 않는 문제를 채팅방 모듈 범위로 좁혀 분석하고, 주기적 새로고침 로직을 적용해 해결했습니다.
 
+## 전체 아키텍처
+
+프로그램은 `Main`에서 환경 변수 `CLS032690125oop3team_MODE` 값을 읽어 `CLIENT` 또는 `SERVER` 모드로 실행됩니다. 클라이언트는 Swing GUI와 기능별 클라이언트 컨트롤러를 통해 요청 패킷을 만들고, Java Socket의 `ObjectOutputStream`으로 서버에 전송합니다. 서버는 클라이언트별 `ServerClientHandler` 스레드를 생성한 뒤, 수신한 패킷을 기능별 서버 컨트롤러에 라우팅하고 DAO 계층을 통해 MySQL 데이터베이스에 접근합니다.
+
+```mermaid
+flowchart LR
+    Main["Main<br/>ProgramProperties"]
+
+    subgraph ClientApp["Client 모드"]
+        Client["Client"]
+        GUI["Swing GUI<br/>LoginScreen / MainScreen / 기능별 화면"]
+        ClientControllers["클라이언트 기능 컨트롤러<br/>CAuth / CChatroom / CChat / CFriend / CSchedule / CMemo / CKeyword / CSetting / SAttendance"]
+        SendQueue["BlockingQueue<br/>ClientOrderBasePacket"]
+        ClientListeners["응답 리스너<br/>ClientInteractor / CChatReceiver / CKeywordReceiver"]
+    end
+
+    subgraph ServerApp["Server 모드"]
+        Server["Server"]
+        ServerSocket["ServerSocket"]
+        Handler["ServerClientHandler<br/>클라이언트별 입출력 스레드"]
+        Router["Server.dispatch()<br/>ServerRequestListener"]
+        ServerControllers["서버 기능 컨트롤러<br/>Auth / Chatroom / Chat / Friend / Schedule / Memo / Attendance / Keyword / Setting"]
+        DAO["DAO 계층<br/>AuthDAO / ChatroomDAO / ChatDAO / FriendDAO / ScheduleDAO / MemoDAO / AttendanceDAO / KeywordDAO / SettingDAO"]
+        Database["Database<br/>DriverManager.getConnection()"]
+    end
+
+    subgraph MySQL["MySQL - MessageProgram"]
+        Tables["USER / SESSION / CHATROOM / CHATROOM_PARTICIPANT<br/>MESSAGES / FRIEND / MEMO / SCHEDULE<br/>KEYWORD / attendance / AttendanceEditRequest"]
+    end
+
+    Main -->|"CLIENT"| Client
+    Main -->|"SERVER"| Server
+
+    GUI --> ClientControllers
+    ClientControllers --> Client
+    Client --> SendQueue
+    SendQueue -->|"ObjectOutputStream<br/>ClientOrderBasePacket"| Handler
+
+    Server --> ServerSocket
+    ServerSocket -->|"accept()"| Handler
+    Handler -->|"ObjectInputStream"| Router
+    Router --> ServerControllers
+    ServerControllers --> DAO
+    DAO --> Database
+    Database -->|"JDBC"| Tables
+
+    ServerControllers -->|"ServerResponseBasePacket"| Handler
+    Handler -->|"ObjectOutputStream"| Client
+    Client --> ClientListeners
+    ClientListeners --> GUI
+```
+
+### 서버 내부 요청 처리 흐름
+
+서버 컨트롤러는 `ServerRequestListener`를 상속하고, 요청 처리 메서드에 `@ServerRequestHandler`를 붙여 담당 패킷 타입을 등록합니다. `Server.dispatch()`는 수신한 `ClientOrderBasePacket`의 실제 클래스와 매칭되는 핸들러를 호출하며, 각 컨트롤러는 필요한 경우 DAO를 통해 DB를 조회하거나 변경한 뒤 `ServerResponseBasePacket`을 클라이언트에 응답합니다.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant GUI as Client GUI
+    participant Client as Client
+    participant Handler as ServerClientHandler
+    participant Server as Server.dispatch
+    participant Controller as Feature ServerController
+    participant DAO as Feature DAO
+    participant DB as MySQL DB
+
+    GUI->>Client: 기능 요청 생성
+    Client->>Client: ClientOrderBasePacket을 sendQueue에 적재
+    Client->>Handler: ObjectOutputStream으로 패킷 전송
+    Handler->>Server: 수신 패킷 dispatch
+    Server->>Controller: @ServerRequestHandler 매칭 메서드 호출
+    Controller->>DAO: 비즈니스 처리에 필요한 데이터 요청
+    DAO->>DB: JDBC Connection / SQL 실행
+    DB-->>DAO: ResultSet 또는 처리 결과
+    DAO-->>Controller: 모델 또는 성공 여부 반환
+    Controller-->>Handler: ServerResponseBasePacket 전송
+    Handler-->>Client: ObjectOutputStream으로 응답 전송
+    Client->>GUI: ClientResponseListener를 통해 화면 갱신
+```
+
+### DB 접근 구조
+
+DB 연결 정보는 서버 모드 실행 시 환경 변수에서 `ProgramProperties`로 로드됩니다. `Database`는 서버 시작 시 JDBC 드라이버를 로드하고, DAO가 요청할 때마다 `DriverManager.getConnection(DB_PATH/DB_NAME, DB_ID, DB_PASSWORD)` 형태로 MySQL 연결을 생성합니다.
+
+```mermaid
+classDiagram
+    class ProgramProperties {
+        +getServerPort()
+        +getServerDBDriver()
+        +getServerDBPath()
+        +getServerDBName()
+        +getServerDBID()
+        +getServerDBPassword()
+    }
+
+    class Server {
+        -ProgramProperties properties
+        -Database database
+        -List~ServerRequestListener~ listeners
+        -List~ServerClientHandler~ onlineClients
+        +start()
+        +dispatch(handler, order)
+        +broadcast(packet, senduserlist)
+        +getDatabase()
+    }
+
+    class Database {
+        -Server server
+        +getConnection() Connection
+    }
+
+    class StandardDAO {
+        #Server server
+        #Database database
+    }
+
+    class FeatureDAO {
+        AuthDAO
+        ChatroomDAO
+        ChatDAO
+        FriendDAO
+        ScheduleDAO
+        MemoDAO
+        AttendanceDAO
+        KeywordDAO
+        SettingDAO
+        UserProfileDAO
+    }
+
+    class MessageProgramDB {
+        USER
+        SESSION
+        CHATROOM
+        CHATROOM_PARTICIPANT
+        MESSAGES
+        FRIEND
+        MEMO
+        SCHEDULE
+        KEYWORD
+        attendance
+        AttendanceEditRequest
+    }
+
+    Server --> ProgramProperties : reads env config
+    Server *-- Database : owns
+    StandardDAO --> Database : uses
+    FeatureDAO --|> StandardDAO : extends
+    Database --> MessageProgramDB : JDBC / MySQL
+```
+
 ## 담당 역할 및 기여
 
 - **친구 관리 기능 구현**: 친구 검색 및 친구 추가 기능을 구현하고, 친구 삭제 및 차단 기능을 통해 사용자 간 관계를 관리할 수 있도록 구성했습니다.
