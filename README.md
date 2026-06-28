@@ -58,48 +58,38 @@
 flowchart LR
     Main["Main<br/>ProgramProperties"]
 
-    subgraph ClientApp["Client 모드"]
-        Client["Client"]
-        GUI["Swing GUI<br/>LoginScreen / MainScreen / 기능별 화면"]
-        ClientControllers["클라이언트 기능 컨트롤러<br/>CAuth / CChatroom / CChat / CFriend / CSchedule / CMemo / CKeyword / CSetting / SAttendance"]
-        SendQueue["BlockingQueue<br/>ClientOrderBasePacket"]
-        ClientListeners["응답 리스너<br/>ClientInteractor / CChatReceiver / CKeywordReceiver"]
+    subgraph ClientApp["Client"]
+        GUI["Swing GUI"]
+        ClientController["기능별 Client Controller"]
+        ClientSocket["Java Socket<br/>ObjectStream"]
     end
 
-    subgraph ServerApp["Server 모드"]
-        Server["Server"]
+    subgraph ServerApp["Server"]
         ServerSocket["ServerSocket"]
-        Handler["ServerClientHandler<br/>클라이언트별 입출력 스레드"]
-        Router["Server.dispatch()<br/>ServerRequestListener"]
-        ServerControllers["서버 기능 컨트롤러<br/>Auth / Chatroom / Chat / Friend / Schedule / Memo / Attendance / Keyword / Setting"]
-        DAO["DAO 계층<br/>AuthDAO / ChatroomDAO / ChatDAO / FriendDAO / ScheduleDAO / MemoDAO / AttendanceDAO / KeywordDAO / SettingDAO"]
-        Database["Database<br/>DriverManager.getConnection()"]
+        Handler["ServerClientHandler"]
+        Router["Server.dispatch()"]
+        ServerController["기능별 Server Controller"]
+        DAO["DAO 계층"]
     end
 
-    subgraph MySQL["MySQL - MessageProgram"]
-        Tables["USER / SESSION / CHATROOM / CHATROOM_PARTICIPANT<br/>MESSAGES / FRIEND / MEMO / SCHEDULE<br/>KEYWORD / attendance / AttendanceEditRequest"]
-    end
+    DB["MySQL<br/>MessageProgram DB"]
 
-    Main -->|"CLIENT"| Client
-    Main -->|"SERVER"| Server
+    Main -->|"CLIENT 모드"| GUI
+    Main -->|"SERVER 모드"| ServerSocket
 
-    GUI --> ClientControllers
-    ClientControllers --> Client
-    Client --> SendQueue
-    SendQueue -->|"ObjectOutputStream<br/>ClientOrderBasePacket"| Handler
+    GUI --> ClientController
+    ClientController --> ClientSocket
+    ClientSocket <-->|"ClientOrder / ServerResponse Packet"| Handler
 
-    Server --> ServerSocket
     ServerSocket -->|"accept()"| Handler
-    Handler -->|"ObjectInputStream"| Router
-    Router --> ServerControllers
-    ServerControllers --> DAO
-    DAO --> Database
-    Database -->|"JDBC"| Tables
+    Handler --> Router
+    Router --> ServerController
+    ServerController --> DAO
+    DAO -->|"JDBC"| DB
 
-    ServerControllers -->|"ServerResponseBasePacket"| Handler
-    Handler -->|"ObjectOutputStream"| Client
-    Client --> ClientListeners
-    ClientListeners --> GUI
+    ServerController --> Handler
+    Handler --> ClientSocket
+    ClientSocket --> GUI
 ```
 
 ### 서버 내부 요청 처리 흐름
