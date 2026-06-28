@@ -52,44 +52,17 @@
 
 ## 전체 아키텍처
 
-프로그램은 `Main`에서 환경 변수 `CLS032690125oop3team_MODE` 값을 읽어 `CLIENT` 또는 `SERVER` 모드로 실행됩니다. 클라이언트는 Swing GUI와 기능별 클라이언트 컨트롤러를 통해 요청 패킷을 만들고, Java Socket의 `ObjectOutputStream`으로 서버에 전송합니다. 서버는 클라이언트별 `ServerClientHandler` 스레드를 생성한 뒤, 수신한 패킷을 기능별 서버 컨트롤러에 라우팅하고 DAO 계층을 통해 MySQL 데이터베이스에 접근합니다.
+프로그램은 `Main`에서 환경 변수 `CLS032690125oop3team_MODE` 값에 따라 `CLIENT` 또는 `SERVER` 모드로 실행됩니다. 클라이언트는 Swing GUI에서 생성한 요청 패킷을 소켓으로 전송하고, 서버는 `ServerClientHandler`와 `Server.dispatch()`를 통해 기능별 컨트롤러로 요청을 위임합니다. 각 컨트롤러는 필요한 데이터를 DAO 계층에서 처리한 뒤 응답 패킷을 클라이언트로 반환합니다.
 
 ```mermaid
 flowchart LR
-    Main["Main<br/>ProgramProperties"]
+    Main -->|"CLIENT"| Client["Client<br/>Swing GUI / Socket"]
+    Main -->|"SERVER"| Server["Server<br/>Handler / Dispatcher"]
 
-    subgraph ClientApp["Client"]
-        GUI["Swing GUI"]
-        ClientController["기능별 Client Controller"]
-        ClientSocket["Java Socket<br/>ObjectStream"]
-    end
-
-    subgraph ServerApp["Server"]
-        ServerSocket["ServerSocket"]
-        Handler["ServerClientHandler"]
-        Router["Server.dispatch()"]
-        ServerController["기능별 Server Controller"]
-        DAO["DAO 계층"]
-    end
-
-    DB["MySQL<br/>MessageProgram DB"]
-
-    Main -->|"CLIENT 모드"| GUI
-    Main -->|"SERVER 모드"| ServerSocket
-
-    GUI --> ClientController
-    ClientController --> ClientSocket
-    ClientSocket <-->|"ClientOrder / ServerResponse Packet"| Handler
-
-    ServerSocket -->|"accept()"| Handler
-    Handler --> Router
-    Router --> ServerController
-    ServerController --> DAO
-    DAO -->|"JDBC"| DB
-
-    ServerController --> Handler
-    Handler --> ClientSocket
-    ClientSocket --> GUI
+    Client <-->|"Packet"| Server
+    Server --> Controller["Feature Controller"]
+    Controller --> DAO["DAO"]
+    DAO --> DB["MySQL DB"]
 ```
 
 ### 서버 내부 요청 처리 흐름
@@ -119,76 +92,6 @@ sequenceDiagram
     Controller-->>Handler: ServerResponseBasePacket 전송
     Handler-->>Client: ObjectOutputStream으로 응답 전송
     Client->>GUI: ClientResponseListener를 통해 화면 갱신
-```
-
-### DB 접근 구조
-
-DB 연결 정보는 서버 모드 실행 시 환경 변수에서 `ProgramProperties`로 로드됩니다. `Database`는 서버 시작 시 JDBC 드라이버를 로드하고, DAO가 요청할 때마다 `DriverManager.getConnection(DB_PATH/DB_NAME, DB_ID, DB_PASSWORD)` 형태로 MySQL 연결을 생성합니다.
-
-```mermaid
-classDiagram
-    class ProgramProperties {
-        +getServerPort()
-        +getServerDBDriver()
-        +getServerDBPath()
-        +getServerDBName()
-        +getServerDBID()
-        +getServerDBPassword()
-    }
-
-    class Server {
-        -ProgramProperties properties
-        -Database database
-        -List~ServerRequestListener~ listeners
-        -List~ServerClientHandler~ onlineClients
-        +start()
-        +dispatch(handler, order)
-        +broadcast(packet, senduserlist)
-        +getDatabase()
-    }
-
-    class Database {
-        -Server server
-        +getConnection() Connection
-    }
-
-    class StandardDAO {
-        #Server server
-        #Database database
-    }
-
-    class FeatureDAO {
-        AuthDAO
-        ChatroomDAO
-        ChatDAO
-        FriendDAO
-        ScheduleDAO
-        MemoDAO
-        AttendanceDAO
-        KeywordDAO
-        SettingDAO
-        UserProfileDAO
-    }
-
-    class MessageProgramDB {
-        USER
-        SESSION
-        CHATROOM
-        CHATROOM_PARTICIPANT
-        MESSAGES
-        FRIEND
-        MEMO
-        SCHEDULE
-        KEYWORD
-        attendance
-        AttendanceEditRequest
-    }
-
-    Server --> ProgramProperties : reads env config
-    Server *-- Database : owns
-    StandardDAO --> Database : uses
-    FeatureDAO --|> StandardDAO : extends
-    Database --> MessageProgramDB : JDBC / MySQL
 ```
 
 ## 담당 역할 및 기여
